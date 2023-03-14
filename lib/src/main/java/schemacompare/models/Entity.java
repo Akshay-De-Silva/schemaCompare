@@ -61,6 +61,15 @@ public class Entity {
         return this.fields;
     }
 
+    public EntityField getFieldByName(String fieldName) {                                   //NEWLY ADDED
+        for (EntityField field : fields) {
+            if (field.getFieldName().equals(fieldName)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
     public static Entity.Builder newBuilder(String entityName) {
         return new Entity.Builder(entityName);
     }
