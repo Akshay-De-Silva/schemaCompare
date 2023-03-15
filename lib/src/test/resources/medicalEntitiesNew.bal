@@ -28,11 +28,11 @@ public type MedicalNeed record {|
 |};
 
 public type MedicalItem record {|
-    readonly int itemId;
+    readonly int item;
 
+    int itemId;
     string name;
     string 'type;
-    int item;
 |};
 
 public type MedicalObject record {|

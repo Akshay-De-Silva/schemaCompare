@@ -34,6 +34,8 @@ public class Main {
         HashMap<String,String> addedFields = new HashMap<>(); // <fieldName, [entityName, type]>
         HashMap<String,String> removedFields = new HashMap<>(); // <fieldName, entityName>
         HashMap<String,String> changedFieldTypes = new HashMap<>(); // <fieldName, [entityName, newType]>
+        HashMap<String,String> addedReadOnly = new HashMap<>(); // <fieldName, entityName>
+        HashMap<String,String> removedReadOnly = new HashMap<>(); // <fieldName, entityName>
 
         //List<String> changedKeys = new ArrayList<>();
 
@@ -65,20 +67,14 @@ public class Main {
                     changedFieldTypes.put(field1.getFieldName(), Arrays.toString(new String[]{entity1.getEntityName(), field2.getFieldType()}));
                 }
 
-                // Compare readonly flag
-//                if (field1.isReadOnly() != field2.isReadOnly()) {
-//                    if (field1.isReadOnly()) {
-//                        differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is no longer read-only");
-//                    } else {
-//                        differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is now read-only");
-//                    }
-//                }
-                // Check for changes in readonly flag
-//                if (field1.isReadOnly() != field2.isReadOnly()) {
-//                    String message = field1.isReadOnly() ? "Removed" : "Added";
-//                    differences.add(String.format("%s 'readonly' flag for field '%s' in entity '%s'.",
-//                            message, field2.getFieldName(), entity2.getEntityName()));
-//                }
+                //Compare readonly fields
+                if (entity1.getKeys().contains(field1) && !entity2.getKeys().contains(field2)) {
+                    differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is no longer a readonly field");
+                    removedReadOnly.put(field1.getFieldName(), entity1.getEntityName());
+                } else if (!entity1.getKeys().contains(field1) && entity2.getKeys().contains(field2)) {
+                    differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is now a readonly field");
+                    addedReadOnly.put(field1.getFieldName(), entity1.getEntityName());
+                }
             }
 
             // Check for added fields
@@ -86,8 +82,14 @@ public class Main {
                 EntityField field1 = entity1.getFieldByName(field2.getFieldName());
 
                 if (field1 == null) {
-                    differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
-                    addedFields.put(field2.getFieldName(), Arrays.toString(new String[]{entity2.getEntityName(), field2.getFieldType()}));
+                    if (entity2.getKeys().contains(field2)) {
+                        differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
+                        addedFields.put(field2.getFieldName(), Arrays.toString(new String[]{entity2.getEntityName(), field2.getFieldType()}));
+                        addedReadOnly.put(field2.getFieldName(), entity2.getEntityName());
+                    } else {
+                        differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
+                        addedFields.put(field2.getFieldName(), Arrays.toString(new String[]{entity2.getEntityName(), field2.getFieldType()}));
+                    }
                 }
             }
         }
@@ -110,7 +112,9 @@ public class Main {
         System.out.println("Removed entities: " + removedEntities + "\n");
         System.out.println("Added fields: " + addedFields + "\n");
         System.out.println("Removed fields: " + removedFields + "\n");
-        System.out.println("Changed field types: " + changedFieldTypes + "\n");
+        System.out.println("Changed field data types: " + changedFieldTypes + "\n");
+        System.out.println("Added readonly fields: " + addedReadOnly + "\n");
+        System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
 
         return differences;
     }
