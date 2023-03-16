@@ -21,7 +21,7 @@ public type MedicalNeed record {|
     readonly int needId;
 
     int itemId;
-    int beneficiaryId;
+    string beneficiaryId;
     time:Civil period;
     boolean urgency;
     int numberOfItems;
@@ -32,7 +32,8 @@ public type MedicalItem record {|
 
     int itemId;
     string name;
-    string 'type;
+    int 'type;
+    string description;
 |};
 
 public type MedicalObject record {|

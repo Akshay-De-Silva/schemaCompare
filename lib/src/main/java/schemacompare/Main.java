@@ -29,15 +29,14 @@ public class Main {
     public static List<String> findDifferences(Module module1, Module module2) {
         List<String> differences = new ArrayList<>();
 
-        List<String> addedEntities = new ArrayList<>(); // <entityName>
-        List<String> removedEntities = new ArrayList<>(); // <entityName>
-        HashMap<String,String> addedFields = new HashMap<>(); // <fieldName, [entityName, type]>
-        HashMap<String,String> removedFields = new HashMap<>(); // <fieldName, entityName>
-        HashMap<String,String> changedFieldTypes = new HashMap<>(); // <fieldName, [entityName, newType]>
-        HashMap<String,String> addedReadOnly = new HashMap<>(); // <fieldName, entityName>
-        HashMap<String,String> removedReadOnly = new HashMap<>(); // <fieldName, entityName>
-
-        //List<String> changedKeys = new ArrayList<>();
+        List<String> addedEntities = new ArrayList<>();
+        List<String> removedEntities = new ArrayList<>();
+        List<String> updatedEntities = new ArrayList<>();
+        HashMap<String,List<Object>> addedFields = new HashMap<>();
+        HashMap<String,List<Object>> removedFields = new HashMap<>();
+        HashMap<String,List<Object>> changedFieldTypes = new HashMap<>();
+        HashMap<String,List<Object>> addedReadOnly = new HashMap<>();
+        HashMap<String,List<Object>> removedReadOnly = new HashMap<>();
 
         // Compare entities in module1 and module2
         for (Entity entity1 : module1.getEntityMap().values()) {
@@ -57,23 +56,29 @@ public class Main {
                 // Check if field2 exists
                 if (field2 == null) {
                     differences.add("Field " + field1.getFieldName() + " has been removed from entity " + entity1.getEntityName());
-                    removedFields.put(field1.getFieldName(), entity1.getEntityName());
+                    updateEntity(updatedEntities, entity1);
+                    addToMap(entity1, field1, removedFields, false);
                     continue;
                 }
 
                 // Compare data types
                 if (!field1.getFieldType().equals(field2.getFieldType())) {
                     differences.add("Data type of field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " has changed from " + field1.getFieldType() + " to " + field2.getFieldType());
-                    changedFieldTypes.put(field1.getFieldName(), Arrays.toString(new String[]{entity1.getEntityName(), field2.getFieldType()}));
+                    updateEntity(updatedEntities, entity1);
+                    addToMap(entity1, field2, changedFieldTypes, true);
+
                 }
 
                 //Compare readonly fields
                 if (entity1.getKeys().contains(field1) && !entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is no longer a readonly field");
-                    removedReadOnly.put(field1.getFieldName(), entity1.getEntityName());
+                    updateEntity(updatedEntities, entity1);
+                    addToMap(entity1, field1, removedReadOnly, false);
+
                 } else if (!entity1.getKeys().contains(field1) && entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is now a readonly field");
-                    addedReadOnly.put(field1.getFieldName(), entity1.getEntityName());
+                    updateEntity(updatedEntities, entity1);
+                    addToMap(entity1, field2, addedReadOnly, true);
                 }
             }
 
@@ -84,12 +89,13 @@ public class Main {
                 if (field1 == null) {
                     if (entity2.getKeys().contains(field2)) {
                         differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
-                        addedFields.put(field2.getFieldName(), Arrays.toString(new String[]{entity2.getEntityName(), field2.getFieldType()}));
-                        addedReadOnly.put(field2.getFieldName(), entity2.getEntityName());
+                        addToMap(entity2, field2, addedReadOnly, true);
+
                     } else {
                         differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
-                        addedFields.put(field2.getFieldName(), Arrays.toString(new String[]{entity2.getEntityName(), field2.getFieldType()}));
                     }
+                    updateEntity(updatedEntities, entity2);
+                    addToMap(entity2, field2, addedFields, true);
                 }
             }
         }
@@ -103,13 +109,15 @@ public class Main {
                 addedEntities.add(entity2.getEntityName());
                 for (EntityField field : entity2.getFields()) {
                     differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName());
-                    addedFields.put(field.getFieldName(), Arrays.toString(new String[]{entity2.getEntityName(), field.getFieldType()}));
+                    updateEntity(updatedEntities, entity2);
+                    addToMap(entity2, field, addedFields, true);
                 }
             }
         }
 
         System.out.println("Added entities: " + addedEntities + "\n");
         System.out.println("Removed entities: " + removedEntities + "\n");
+        System.out.println("Updated entities: " + updatedEntities + "\n");
         System.out.println("Added fields: " + addedFields + "\n");
         System.out.println("Removed fields: " + removedFields + "\n");
         System.out.println("Changed field data types: " + changedFieldTypes + "\n");
@@ -117,6 +125,38 @@ public class Main {
         System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
 
         return differences;
+    }
+
+    // Update list of updated entities
+    public static void updateEntity(List<String> updatedEntities, Entity entity) {
+        if(!updatedEntities.contains(entity.getEntityName())) {
+            updatedEntities.add(entity.getEntityName());
+        }
+    }
+
+    // Add entity and field to map
+    public static void addToMap(Entity entity, EntityField field, Map<String,List<Object>> map, boolean withType) {
+        if (withType) {
+            if (!map.containsKey(entity.getEntityName())) {
+                List<Object> initialData = new ArrayList<>();
+                initialData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+                map.put(entity.getEntityName(), initialData);
+            } else {
+                List<Object> existingData = map.get(entity.getEntityName());
+                existingData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+                map.put(entity.getEntityName(), existingData);
+            }
+        } else {
+            if (!map.containsKey(entity.getEntityName())) {
+                List<Object> initialData = new ArrayList<>();
+                initialData.add(Arrays.toString(new Object[]{field.getFieldName()}));
+                map.put(entity.getEntityName(), initialData);
+            } else {
+                List<Object> existingData = map.get(entity.getEntityName());
+                existingData.add(Arrays.toString(new Object[]{field.getFieldName()}));
+                map.put(entity.getEntityName(), existingData);
+            }
+        }
     }
 
 }
