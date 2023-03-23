@@ -12,10 +12,14 @@ public class Main {
     public static void main(String[] args) {
         Path path1 = Paths.get("/home/wso2/IdeaProjects/schemaCompare/lib/src/test/resources/medicalEntities.bal");
         Path path2 = Paths.get("/home/wso2/IdeaProjects/schemaCompare/lib/src/test/resources/medicalEntitiesNew.bal");
+        Path path3 = Paths.get("/home/wso2/IdeaProjects/schemaCompare/lib/src/test/resources/test.bal");
+        Path path4 = Paths.get("/home/wso2/IdeaProjects/schemaCompare/lib/src/test/resources/testNew.bal");
 
         try {
             Module module1 = schemaCompare.getEntities(path1);
             Module module2 = schemaCompare.getEntities(path2);
+            Module module3 = schemaCompare.getEntities(path3);
+            Module module4 = schemaCompare.getEntities(path4);
 
             List<String> differences = findDifferences(module1, module2);
             System.out.println("Detailed list of differences: ");
@@ -37,6 +41,8 @@ public class Main {
         HashMap<String,List<Object>> changedFieldTypes = new HashMap<>();
         HashMap<String,List<Object>> addedReadOnly = new HashMap<>();
         HashMap<String,List<Object>> removedReadOnly = new HashMap<>();
+        HashMap<String,List<Object>> addedForeignKeys = new HashMap<>();
+        HashMap<String,List<Object>> removedForeignKeys = new HashMap<>();
 
         // Compare entities in module1 and module2
         for (Entity entity1 : module1.getEntityMap().values()) {
@@ -53,11 +59,17 @@ public class Main {
             for (EntityField field1 : entity1.getFields()) {
                 EntityField field2 = entity2.getFieldByName(field1.getFieldName());
 
-                // Check if field2 exists
+                // Check if field2 exists and if foreign key was removed
                 if (field2 == null) {
-                    differences.add("Field " + field1.getFieldName() + " has been removed from entity " + entity1.getEntityName());
-                    updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field1, removedFields, false);
+                    if(field1.getRelation() == null) {
+                        differences.add("Field " + field1.getFieldName() + " has been removed from entity " + entity1.getEntityName());
+                        updateEntity(updatedEntities, entity1);
+                        addToMap(entity1, field1, removedFields, false, foreignKeyAction.NONE);
+                    } else if(field1.getRelation().isOwner()) {
+                        differences.add("Foreign key " + field1.getFieldName() + " has been removed from entity " + entity1.getEntityName());
+                        updateEntity(updatedEntities, entity1);
+                        addToMap(entity1, field1, removedForeignKeys, false, foreignKeyAction.REMOVE);
+                    }
                     continue;
                 }
 
@@ -65,37 +77,43 @@ public class Main {
                 if (!field1.getFieldType().equals(field2.getFieldType())) {
                     differences.add("Data type of field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " has changed from " + field1.getFieldType() + " to " + field2.getFieldType());
                     updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field2, changedFieldTypes, true);
-
+                    addToMap(entity1, field2, changedFieldTypes, true, foreignKeyAction.NONE);
                 }
 
                 //Compare readonly fields
                 if (entity1.getKeys().contains(field1) && !entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is no longer a readonly field");
                     updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field1, removedReadOnly, false);
+                    addToMap(entity1, field1, removedReadOnly, false, foreignKeyAction.NONE);
 
                 } else if (!entity1.getKeys().contains(field1) && entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is now a readonly field");
                     updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field2, addedReadOnly, true);
+                    addToMap(entity1, field2, addedReadOnly, true, foreignKeyAction.NONE);
                 }
+
             }
 
-            // Check for added fields
+            // Check for added fields and for added foreign keys
             for (EntityField field2 : entity2.getFields()) {
                 EntityField field1 = entity1.getFieldByName(field2.getFieldName());
 
                 if (field1 == null) {
-                    if (entity2.getKeys().contains(field2)) {
-                        differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
-                        addToMap(entity2, field2, addedReadOnly, true);
+                    if(field2.getRelation() == null) {
+                        if (entity2.getKeys().contains(field2)) {
+                            differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
+                            addToMap(entity2, field2, addedReadOnly, true, foreignKeyAction.NONE);
 
-                    } else {
-                        differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
+                        } else {
+                            differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
+                        }
+                        updateEntity(updatedEntities, entity2);
+                        addToMap(entity2, field2, addedFields, true, foreignKeyAction.NONE);
+                    } else if(field2.getRelation().isOwner()){
+                        differences.add("Foreign key " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
+                        updateEntity(updatedEntities, entity2);
+                        addToMap(entity2, field2, addedForeignKeys, true, foreignKeyAction.ADD);
                     }
-                    updateEntity(updatedEntities, entity2);
-                    addToMap(entity2, field2, addedFields, true);
                 }
             }
         }
@@ -108,9 +126,17 @@ public class Main {
                 differences.add("Entity " + entity2.getEntityName() + " has been added");
                 addedEntities.add(entity2.getEntityName());
                 for (EntityField field : entity2.getFields()) {
-                    differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName());
-                    updateEntity(updatedEntities, entity2);
-                    addToMap(entity2, field, addedFields, true);
+                    if(field.getRelation() == null) {
+                        if(entity2.getKeys().contains(field)) {
+                            differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
+                            addToMap(entity2, field, addedReadOnly, true, foreignKeyAction.NONE);
+
+                        } else {
+                            differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName());
+                        }
+                        updateEntity(updatedEntities, entity2);
+                        addToMap(entity2, field, addedFields, true, foreignKeyAction.NONE);
+                    }
                 }
             }
         }
@@ -123,6 +149,8 @@ public class Main {
         System.out.println("Changed field data types: " + changedFieldTypes + "\n");
         System.out.println("Added readonly fields: " + addedReadOnly + "\n");
         System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
+        System.out.println("Added foreign keys: " + addedForeignKeys + "\n");
+        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
 
         return differences;
     }
@@ -135,28 +163,69 @@ public class Main {
     }
 
     // Add entity and field to map
-    public static void addToMap(Entity entity, EntityField field, Map<String,List<Object>> map, boolean withType) {
-        if (withType) {
-            if (!map.containsKey(entity.getEntityName())) {
-                List<Object> initialData = new ArrayList<>();
-                initialData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
-                map.put(entity.getEntityName(), initialData);
-            } else {
-                List<Object> existingData = map.get(entity.getEntityName());
-                existingData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
-                map.put(entity.getEntityName(), existingData);
-            }
-        } else {
-            if (!map.containsKey(entity.getEntityName())) {
-                List<Object> initialData = new ArrayList<>();
-                initialData.add(Arrays.toString(new Object[]{field.getFieldName()}));
-                map.put(entity.getEntityName(), initialData);
-            } else {
-                List<Object> existingData = map.get(entity.getEntityName());
-                existingData.add(Arrays.toString(new Object[]{field.getFieldName()}));
-                map.put(entity.getEntityName(), existingData);
-            }
+    public static void addToMap(Entity entity, EntityField field, Map<String,List<Object>> map, boolean withType, foreignKeyAction action) {
+        switch(action) {
+            case ADD:
+                String keyAddName = "FK_" + entity.getEntityName() + "_" + field.getRelation().getAssocEntity().getEntityName();
+                if (!map.containsKey(entity.getEntityName())) {
+                    List<Object> initialData = new ArrayList<>();
+                    initialData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(),
+                                    field.getRelation().getKeyColumns().get(0).getType(), field.getRelation().getAssocEntity().getEntityName(),
+                                    field.getRelation().getKeyColumns().get(0).getReference()}));
+                    map.put(entity.getEntityName(), initialData);
+                } else {
+                    List<Object> existingData = map.get(entity.getEntityName());
+                    existingData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(),
+                            field.getRelation().getKeyColumns().get(0).getType(), field.getRelation().getAssocEntity().getEntityName(),
+                            field.getRelation().getKeyColumns().get(0).getReference()}));
+                    map.put(entity.getEntityName(), existingData);
+                }
+                break;
+
+            case REMOVE:
+                String keyRemoveName = "FK_" + entity.getEntityName() + "_" + field.getRelation().getAssocEntity().getEntityName();
+
+                if (!map.containsKey(entity.getEntityName())) {
+                    List<Object> initialData = new ArrayList<>();
+                    initialData.add(Arrays.toString(new Object[]{keyRemoveName}));
+                    map.put(entity.getEntityName(), initialData);
+                } else {
+                    List<Object> existingData = map.get(entity.getEntityName());
+                    existingData.add(Arrays.toString(new Object[]{keyRemoveName}));
+                    map.put(entity.getEntityName(), existingData);
+                }
+                break;
+
+            case NONE:
+                if (withType) {
+                    if (!map.containsKey(entity.getEntityName())) {
+                        List<Object> initialData = new ArrayList<>();
+                        initialData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+                        map.put(entity.getEntityName(), initialData);
+                    } else {
+                        List<Object> existingData = map.get(entity.getEntityName());
+                        existingData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+                        map.put(entity.getEntityName(), existingData);
+                    }
+                } else {
+                    if (!map.containsKey(entity.getEntityName())) {
+                        List<Object> initialData = new ArrayList<>();
+                        initialData.add(Arrays.toString(new Object[]{field.getFieldName()}));
+                        map.put(entity.getEntityName(), initialData);
+                    } else {
+                        List<Object> existingData = map.get(entity.getEntityName());
+                        existingData.add(Arrays.toString(new Object[]{field.getFieldName()}));
+                        map.put(entity.getEntityName(), existingData);
+                    }
+                }
+                break;
         }
+    }
+
+    public enum foreignKeyAction {
+        ADD,
+        REMOVE,
+        NONE
     }
 
 }

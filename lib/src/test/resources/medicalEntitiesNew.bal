@@ -25,6 +25,7 @@ public type MedicalNeed record {|
     time:Civil period;
     boolean urgency;
     int numberOfItems;
+    MedicalItem item;
 |};
 
 public type MedicalItem record {|
@@ -34,6 +35,7 @@ public type MedicalItem record {|
     string name;
     int 'type;
     string description;
+    MedicalNeed[] needs;
 |};
 
 public type MedicalObject record {|
