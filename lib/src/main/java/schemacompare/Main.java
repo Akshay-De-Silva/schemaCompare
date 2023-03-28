@@ -22,8 +22,8 @@ public class Main {
             Module module4 = schemaCompare.getEntities(path4);
 
             List<String> differences = findDifferences(module1, module2);
-            System.out.println("Detailed list of differences: ");
-            System.out.println(differences);
+//            System.out.println("Detailed list of differences: ");
+//            System.out.println(differences);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -89,7 +89,7 @@ public class Main {
                 } else if (!entity1.getKeys().contains(field1) && entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is now a readonly field");
                     updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field2, addedReadOnly, true, foreignKeyAction.NONE);
+                    addToMap(entity1, field2, addedReadOnly, false, foreignKeyAction.NONE);
                 }
 
             }
@@ -102,7 +102,7 @@ public class Main {
                     if(field2.getRelation() == null) {
                         if (entity2.getKeys().contains(field2)) {
                             differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
-                            addToMap(entity2, field2, addedReadOnly, true, foreignKeyAction.NONE);
+                            addToMap(entity2, field2, addedReadOnly, false, foreignKeyAction.NONE);
 
                         } else {
                             differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
@@ -129,7 +129,7 @@ public class Main {
                     if(field.getRelation() == null) {
                         if(entity2.getKeys().contains(field)) {
                             differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
-                            addToMap(entity2, field, addedReadOnly, true, foreignKeyAction.NONE);
+                            addToMap(entity2, field, addedReadOnly, false, foreignKeyAction.NONE);
 
                         } else {
                             differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName());
@@ -141,16 +141,27 @@ public class Main {
             }
         }
 
-        System.out.println("Added entities: " + addedEntities + "\n");
-        System.out.println("Removed entities: " + removedEntities + "\n");
-        System.out.println("Updated entities: " + updatedEntities + "\n");
-        System.out.println("Added fields: " + addedFields + "\n");
-        System.out.println("Removed fields: " + removedFields + "\n");
-        System.out.println("Changed field data types: " + changedFieldTypes + "\n");
-        System.out.println("Added readonly fields: " + addedReadOnly + "\n");
-        System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
-        System.out.println("Added foreign keys: " + addedForeignKeys + "\n");
-        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
+//        System.out.println("Added entities: " + addedEntities + "\n");
+//        System.out.println("Removed entities: " + removedEntities + "\n");
+//        System.out.println("Updated entities: " + updatedEntities + "\n");
+//        System.out.println("Added fields: " + addedFields + "\n");
+//        System.out.println("Removed fields: " + removedFields + "\n");
+//        System.out.println("Changed field data types: " + changedFieldTypes + "\n");
+//        System.out.println("Added readonly fields: " + addedReadOnly + "\n");
+//        System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
+//        System.out.println("Added foreign keys: " + addedForeignKeys + "\n");
+//        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
+
+        // Convert differences to queries (ordered)
+        convertListToQuery(queryTypes.ADD_TABLE, addedEntities);
+        convertMapToQuery(queryTypes.ADD_FIELD, addedFields);
+        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly);
+        convertMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys);
+        convertMapToQuery(queryTypes.REMOVE_FOREIGN_KEY, removedForeignKeys);
+        convertMapToQuery(queryTypes.REMOVE_READONLY, removedReadOnly);
+        convertMapToQuery(queryTypes.REMOVE_FIELD, removedFields);
+        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities);
+        convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes);
 
         return differences;
     }
@@ -169,14 +180,12 @@ public class Main {
                 String keyAddName = "FK_" + entity.getEntityName() + "_" + field.getRelation().getAssocEntity().getEntityName();
                 if (!map.containsKey(entity.getEntityName())) {
                     List<Object> initialData = new ArrayList<>();
-                    initialData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(),
-                                    field.getRelation().getKeyColumns().get(0).getType(), field.getRelation().getAssocEntity().getEntityName(),
+                    initialData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
                                     field.getRelation().getKeyColumns().get(0).getReference()}));
                     map.put(entity.getEntityName(), initialData);
                 } else {
                     List<Object> existingData = map.get(entity.getEntityName());
-                    existingData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(),
-                            field.getRelation().getKeyColumns().get(0).getType(), field.getRelation().getAssocEntity().getEntityName(),
+                    existingData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
                             field.getRelation().getKeyColumns().get(0).getReference()}));
                     map.put(entity.getEntityName(), existingData);
                 }
@@ -222,6 +231,160 @@ public class Main {
         }
     }
 
+    // Convert list to a MySQL query
+    public static void convertListToQuery(queryTypes type, List<String> entities) {
+        switch(type) {
+            case ADD_TABLE:
+                for (String entity : entities) {
+                    System.out.println("CREATE TABLE " + entity + ";");
+                }
+                break;
+
+            case REMOVE_TABLE:
+                for (String entity : entities) {
+                    System.out.println("DROP TABLE " + entity + ";");
+                }
+                break;
+        }
+    }
+
+    // Convert map to a MySQL query
+    public static void convertMapToQuery(queryTypes type, Map<String,List<Object>> map) {
+        switch(type) {
+            case ADD_FIELD:
+                for (String entity : map.keySet()) {
+                    for (Object field : map.get(entity)) {
+                        String[] fieldData = field.toString().split(",");
+                        System.out.println("ALTER TABLE " + entity + " ADD COLUMN " + fieldData[0].substring(1) + " " + getDataType(fieldData[1].substring(1,fieldData[1].length()-1)) + ";");
+                    }
+                }
+                break;
+
+            case REMOVE_FIELD:
+                for (String entity : map.keySet()) {
+                    for (Object field : map.get(entity)) {
+                        System.out.println("ALTER TABLE " + entity + " DROP COLUMN " + field.toString().substring(1,field.toString().length()-1) + ";");
+                    }
+                }
+                break;
+
+            case CHANGE_TYPE:
+                for (String entity : map.keySet()) {
+                    for (Object field : map.get(entity)) {
+                        String[] fieldData = field.toString().split(",");
+                        System.out.println("ALTER TABLE " + entity + " MODIFY COLUMN " + fieldData[0].substring(1) + " " + getDataType(fieldData[1].substring(1,fieldData[1].length()-1)) + ";");
+                    }
+                }
+                break;
+
+            case ADD_READONLY:
+                for (String entity : map.keySet()) {
+                    for (Object field : map.get(entity)) {
+                        System.out.println("ALTER TABLE " + entity + " ADD PRIMARY KEY (" + field.toString().substring(1,field.toString().length()-1) + ");");
+                    }
+                }
+                break;
+
+            case REMOVE_READONLY:
+                for (String entity : map.keySet()) {
+                    System.out.println("ALTER TABLE " + entity + " DROP PRIMARY KEY;");
+                }
+                break;
+
+            case ADD_FOREIGN_KEY:
+                for (String entity : map.keySet()) {
+                    for (Object field : map.get(entity)) {
+                        String[] fieldData = field.toString().split(",");
+                        System.out.println("ALTER TABLE " + entity + " ADD CONSTRAINT " + fieldData[0].substring(1) + " FOREIGN KEY (" + fieldData[1].substring(1) + ") REFERENCES " + fieldData[2] + "(" + fieldData[3].substring(1, fieldData[3].length()-1) + ");");
+                    }
+                }
+                break;
+
+            case REMOVE_FOREIGN_KEY:
+                for (String entity : map.keySet()) {
+                    for (Object field : map.get(entity)) {
+                        String[] fieldData = field.toString().split(",");
+                        System.out.println("ALTER TABLE " + entity + " DROP FOREIGN KEY " + fieldData[0].substring(1,fieldData[0].length()-1) + ";");
+                    }
+                }
+                break;
+        }
+    }
+
+    // Convert Java data type to MySQL data type
+    public static String getDataType(String dataType) {
+        String resultType;
+
+        switch (dataType) {
+            case "string":
+                resultType = "VARCHAR(191)";
+                break;
+
+            case "int":
+                resultType = "INT";
+                break;
+
+            case "long":
+                resultType = "BIGINT";
+                break;
+
+            case "float":
+                resultType = "FLOAT";
+                break;
+
+            case "double":
+                resultType = "DOUBLE";
+                break;
+
+            case "boolean":
+                resultType = "BOOLEAN";
+                break;
+
+            case "Date":
+            case "LocalDate":
+                resultType = "DATE";
+                break;
+
+            case "LocalTime":
+                resultType = "TIME";
+                break;
+
+            case "LocalDateTime":
+                resultType = "DATETIME";
+                break;
+
+            case "Blob":
+            case "byte[]":
+                resultType = "BLOB";
+                break;
+
+            case "Clob":
+                resultType = "CLOB";
+                break;
+
+            default:
+                resultType = "ERROR: VARIABLE NOT FOUND";
+                break;
+        }
+
+        return resultType;
+
+    }
+
+    // Types of MySQL queries
+    public enum queryTypes {
+        ADD_TABLE,
+        REMOVE_TABLE,
+        ADD_FIELD,
+        REMOVE_FIELD,
+        CHANGE_TYPE,
+        ADD_READONLY,
+        REMOVE_READONLY,
+        ADD_FOREIGN_KEY,
+        REMOVE_FOREIGN_KEY
+    }
+
+    // Types of actions for foreign keys
     public enum foreignKeyAction {
         ADD,
         REMOVE,
