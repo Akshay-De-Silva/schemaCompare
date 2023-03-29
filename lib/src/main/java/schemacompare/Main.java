@@ -1,5 +1,8 @@
 package schemacompare;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -22,8 +25,8 @@ public class Main {
             Module module4 = schemaCompare.getEntities(path4);
 
             List<String> differences = findDifferences(module1, module2);
-//            System.out.println("Detailed list of differences: ");
-//            System.out.println(differences);
+            System.out.println("Detailed list of differences: ");
+            System.out.println(differences);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -152,16 +155,32 @@ public class Main {
 //        System.out.println("Added foreign keys: " + addedForeignKeys + "\n");
 //        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
 
+        List<String> queries = new ArrayList<>();
+
         // Convert differences to queries (ordered)
-        convertListToQuery(queryTypes.ADD_TABLE, addedEntities);
-        convertMapToQuery(queryTypes.ADD_FIELD, addedFields);
-        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly);
-        convertMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys);
-        convertMapToQuery(queryTypes.REMOVE_FOREIGN_KEY, removedForeignKeys);
-        convertMapToQuery(queryTypes.REMOVE_READONLY, removedReadOnly);
-        convertMapToQuery(queryTypes.REMOVE_FIELD, removedFields);
-        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities);
-        convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes);
+        convertListToQuery(queryTypes.ADD_TABLE, addedEntities, queries);
+        convertMapToQuery(queryTypes.ADD_FIELD, addedFields, queries);
+        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly, queries);
+        convertMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys, queries);
+        convertMapToQuery(queryTypes.REMOVE_FOREIGN_KEY, removedForeignKeys, queries);
+        convertMapToQuery(queryTypes.REMOVE_READONLY, removedReadOnly, queries);
+        convertMapToQuery(queryTypes.REMOVE_FIELD, removedFields, queries);
+        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities, queries);
+        convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes, queries);
+
+        try {
+            BufferedWriter writer = new BufferedWriter(new FileWriter("migrate.sql"));
+
+            for (String query : queries) {
+                writer.write(query);
+                writer.newLine();
+            }
+            writer.close();
+
+            System.out.println("Successfully migrated");
+        } catch (IOException e) {
+            System.out.println("An error occurred while writing to file: " + e.getMessage());
+        }
 
         return differences;
     }
@@ -175,32 +194,38 @@ public class Main {
 
     // Add entity and field to map
     public static void addToMap(Entity entity, EntityField field, Map<String,List<Object>> map, boolean withType, foreignKeyAction action) {
+        StringBuilder keyName = new StringBuilder();
+        keyName.append("FK_");
+        keyName.append(entity.getEntityName());
+        keyName.append("_");
+
         switch(action) {
             case ADD:
-                String keyAddName = "FK_" + entity.getEntityName() + "_" + field.getRelation().getAssocEntity().getEntityName();
+                keyName.append(field.getRelation().getAssocEntity().getEntityName());
+
                 if (!map.containsKey(entity.getEntityName())) {
                     List<Object> initialData = new ArrayList<>();
-                    initialData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
+                    initialData.add(Arrays.toString(new Object[]{keyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
                                     field.getRelation().getKeyColumns().get(0).getReference()}));
                     map.put(entity.getEntityName(), initialData);
                 } else {
                     List<Object> existingData = map.get(entity.getEntityName());
-                    existingData.add(Arrays.toString(new Object[]{keyAddName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
+                    existingData.add(Arrays.toString(new Object[]{keyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
                             field.getRelation().getKeyColumns().get(0).getReference()}));
                     map.put(entity.getEntityName(), existingData);
                 }
                 break;
 
             case REMOVE:
-                String keyRemoveName = "FK_" + entity.getEntityName() + "_" + field.getRelation().getAssocEntity().getEntityName();
+                keyName.append(field.getRelation().getAssocEntity().getEntityName());
 
                 if (!map.containsKey(entity.getEntityName())) {
                     List<Object> initialData = new ArrayList<>();
-                    initialData.add(Arrays.toString(new Object[]{keyRemoveName}));
+                    initialData.add(Arrays.toString(new Object[]{keyName}));
                     map.put(entity.getEntityName(), initialData);
                 } else {
                     List<Object> existingData = map.get(entity.getEntityName());
-                    existingData.add(Arrays.toString(new Object[]{keyRemoveName}));
+                    existingData.add(Arrays.toString(new Object[]{keyName}));
                     map.put(entity.getEntityName(), existingData);
                 }
                 break;
@@ -232,30 +257,30 @@ public class Main {
     }
 
     // Convert list to a MySQL query
-    public static void convertListToQuery(queryTypes type, List<String> entities) {
+    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries) {
         switch(type) {
             case ADD_TABLE:
                 for (String entity : entities) {
-                    System.out.println("CREATE TABLE " + entity + ";");
+                    queries.add("CREATE TABLE " + entity + ";");
                 }
                 break;
 
             case REMOVE_TABLE:
                 for (String entity : entities) {
-                    System.out.println("DROP TABLE " + entity + ";");
+                    queries.add("DROP TABLE " + entity + ";");
                 }
                 break;
         }
     }
 
     // Convert map to a MySQL query
-    public static void convertMapToQuery(queryTypes type, Map<String,List<Object>> map) {
+    public static void convertMapToQuery(queryTypes type, Map<String,List<Object>> map, List<String> queries) {
         switch(type) {
             case ADD_FIELD:
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
                         String[] fieldData = field.toString().split(",");
-                        System.out.println("ALTER TABLE " + entity + " ADD COLUMN " + fieldData[0].substring(1) + " " + getDataType(fieldData[1].substring(1,fieldData[1].length()-1)) + ";");
+                        queries.add("ALTER TABLE " + entity + " ADD COLUMN " + fieldData[0].substring(1) + " " + getDataType(fieldData[1].substring(1,fieldData[1].length()-1)) + ";");
                     }
                 }
                 break;
@@ -263,7 +288,7 @@ public class Main {
             case REMOVE_FIELD:
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
-                        System.out.println("ALTER TABLE " + entity + " DROP COLUMN " + field.toString().substring(1,field.toString().length()-1) + ";");
+                        queries.add("ALTER TABLE " + entity + " DROP COLUMN " + field.toString().substring(1,field.toString().length()-1) + ";");
                     }
                 }
                 break;
@@ -272,7 +297,7 @@ public class Main {
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
                         String[] fieldData = field.toString().split(",");
-                        System.out.println("ALTER TABLE " + entity + " MODIFY COLUMN " + fieldData[0].substring(1) + " " + getDataType(fieldData[1].substring(1,fieldData[1].length()-1)) + ";");
+                        queries.add("ALTER TABLE " + entity + " MODIFY COLUMN " + fieldData[0].substring(1) + " " + getDataType(fieldData[1].substring(1,fieldData[1].length()-1)) + ";");
                     }
                 }
                 break;
@@ -280,14 +305,14 @@ public class Main {
             case ADD_READONLY:
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
-                        System.out.println("ALTER TABLE " + entity + " ADD PRIMARY KEY (" + field.toString().substring(1,field.toString().length()-1) + ");");
+                        queries.add("ALTER TABLE " + entity + " ADD PRIMARY KEY (" + field.toString().substring(1,field.toString().length()-1) + ");");
                     }
                 }
                 break;
 
             case REMOVE_READONLY:
                 for (String entity : map.keySet()) {
-                    System.out.println("ALTER TABLE " + entity + " DROP PRIMARY KEY;");
+                    queries.add("ALTER TABLE " + entity + " DROP PRIMARY KEY;");
                 }
                 break;
 
@@ -295,7 +320,7 @@ public class Main {
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
                         String[] fieldData = field.toString().split(",");
-                        System.out.println("ALTER TABLE " + entity + " ADD CONSTRAINT " + fieldData[0].substring(1) + " FOREIGN KEY (" + fieldData[1].substring(1) + ") REFERENCES " + fieldData[2] + "(" + fieldData[3].substring(1, fieldData[3].length()-1) + ");");
+                        queries.add("ALTER TABLE " + entity + " ADD CONSTRAINT " + fieldData[0].substring(1) + " FOREIGN KEY (" + fieldData[1].substring(1) + ") REFERENCES " + fieldData[2] + "(" + fieldData[3].substring(1, fieldData[3].length()-1) + ");");
                     }
                 }
                 break;
@@ -304,7 +329,7 @@ public class Main {
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
                         String[] fieldData = field.toString().split(",");
-                        System.out.println("ALTER TABLE " + entity + " DROP FOREIGN KEY " + fieldData[0].substring(1,fieldData[0].length()-1) + ";");
+                        queries.add("ALTER TABLE " + entity + " DROP FOREIGN KEY " + fieldData[0].substring(1,fieldData[0].length()-1) + ";");
                     }
                 }
                 break;

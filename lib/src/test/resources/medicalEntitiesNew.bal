@@ -33,7 +33,7 @@ public type MedicalItem record {|
 
     int itemId;
     string name;
-    int 'type;
+    int types;
     string description;
     MedicalNeed[] needs;
 |};
@@ -42,6 +42,6 @@ public type MedicalObject record {|
     readonly int objectId;
 
     string objectName;
-    string 'type;
+    string types;
     boolean objectFlag;
 |};
