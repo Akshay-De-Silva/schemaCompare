@@ -45,3 +45,7 @@ public type MedicalObject record {|
     string types;
     boolean objectFlag;
 |};
+
+public type MedicalTest record {|
+    readonly string testId;
+|};

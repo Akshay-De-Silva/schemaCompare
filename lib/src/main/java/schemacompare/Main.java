@@ -35,10 +35,11 @@ public class Main {
 
     public static List<String> findDifferences(Module module1, Module module2) {
         List<String> differences = new ArrayList<>();
+        List<String> queries = new ArrayList<>();
+        HashMap<String,List<Object>> primaryKeys = new HashMap<>();
 
         List<String> addedEntities = new ArrayList<>();
         List<String> removedEntities = new ArrayList<>();
-        List<String> updatedEntities = new ArrayList<>();
         HashMap<String,List<Object>> addedFields = new HashMap<>();
         HashMap<String,List<Object>> removedFields = new HashMap<>();
         HashMap<String,List<Object>> changedFieldTypes = new HashMap<>();
@@ -66,12 +67,10 @@ public class Main {
                 if (field2 == null) {
                     if(field1.getRelation() == null) {
                         differences.add("Field " + field1.getFieldName() + " has been removed from entity " + entity1.getEntityName());
-                        updateEntity(updatedEntities, entity1);
-                        addToMap(entity1, field1, removedFields, false, foreignKeyAction.NONE);
+                        addToMap(entity1, field1, removedFields, false, false, foreignKeyAction.NONE);
                     } else if(field1.getRelation().isOwner()) {
                         differences.add("Foreign key " + field1.getFieldName() + " has been removed from entity " + entity1.getEntityName());
-                        updateEntity(updatedEntities, entity1);
-                        addToMap(entity1, field1, removedForeignKeys, false, foreignKeyAction.REMOVE);
+                        addToMap(entity1, field1, removedForeignKeys, false, false, foreignKeyAction.REMOVE);
                     }
                     continue;
                 }
@@ -79,20 +78,17 @@ public class Main {
                 // Compare data types
                 if (!field1.getFieldType().equals(field2.getFieldType())) {
                     differences.add("Data type of field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " has changed from " + field1.getFieldType() + " to " + field2.getFieldType());
-                    updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field2, changedFieldTypes, true, foreignKeyAction.NONE);
+                    addToMap(entity1, field2, changedFieldTypes, true, false, foreignKeyAction.NONE);
                 }
 
                 //Compare readonly fields
                 if (entity1.getKeys().contains(field1) && !entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is no longer a readonly field");
-                    updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field1, removedReadOnly, false, foreignKeyAction.NONE);
+                    addToMap(entity1, field1, removedReadOnly, false, false, foreignKeyAction.NONE);
 
                 } else if (!entity1.getKeys().contains(field1) && entity2.getKeys().contains(field2)) {
                     differences.add("Field " + field1.getFieldName() + " in entity " + entity1.getEntityName() + " is now a readonly field");
-                    updateEntity(updatedEntities, entity1);
-                    addToMap(entity1, field2, addedReadOnly, false, foreignKeyAction.NONE);
+                    addToMap(entity1, field2, addedReadOnly, false, false, foreignKeyAction.NONE);
                 }
 
             }
@@ -105,17 +101,18 @@ public class Main {
                     if(field2.getRelation() == null) {
                         if (entity2.getKeys().contains(field2)) {
                             differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
-                            addToMap(entity2, field2, addedReadOnly, false, foreignKeyAction.NONE);
+                            addToMap(entity2, field2, addedReadOnly, false, false, foreignKeyAction.NONE);
 
                         } else {
                             differences.add("Field " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
                         }
-                        updateEntity(updatedEntities, entity2);
-                        addToMap(entity2, field2, addedFields, true, foreignKeyAction.NONE);
+                        addToMap(entity2, field2, addedFields, true, false, foreignKeyAction.NONE);
                     } else if(field2.getRelation().isOwner()){
+                        differences.add("Field " + field2.getRelation().getKeyColumns().get(0).getField() + " of type " + field2.getRelation().getKeyColumns().get(0).getType() + " has been added to entity " + entity2.getEntityName() + " as a foreign key");
+                        addToMap(entity2, field2, addedFields, true, true, foreignKeyAction.NONE);
+
                         differences.add("Foreign key " + field2.getFieldName() + " of type " + field2.getFieldType() + " has been added to entity " + entity2.getEntityName());
-                        updateEntity(updatedEntities, entity2);
-                        addToMap(entity2, field2, addedForeignKeys, true, foreignKeyAction.ADD);
+                        addToMap(entity2, field2, addedForeignKeys, true, false, foreignKeyAction.ADD);
                     }
                 }
             }
@@ -132,21 +129,25 @@ public class Main {
                     if(field.getRelation() == null) {
                         if(entity2.getKeys().contains(field)) {
                             differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName() + " as a readonly field");
-                            addToMap(entity2, field, addedReadOnly, false, foreignKeyAction.NONE);
+                            addToMap(entity2, field, addedReadOnly, true, false, foreignKeyAction.NONE);
 
                         } else {
                             differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + entity2.getEntityName());
+                            addToMap(entity2, field, addedFields, true, false, foreignKeyAction.NONE);
                         }
-                        updateEntity(updatedEntities, entity2);
-                        addToMap(entity2, field, addedFields, true, foreignKeyAction.NONE);
                     }
                 }
             }
         }
 
+        //Save new table primary keys and remove them from addedReadOnly
+        for (String entity : addedEntities) {
+            primaryKeys.put(entity, addedReadOnly.get(entity));
+            addedReadOnly.remove(entity);
+        }
+
 //        System.out.println("Added entities: " + addedEntities + "\n");
 //        System.out.println("Removed entities: " + removedEntities + "\n");
-//        System.out.println("Updated entities: " + updatedEntities + "\n");
 //        System.out.println("Added fields: " + addedFields + "\n");
 //        System.out.println("Removed fields: " + removedFields + "\n");
 //        System.out.println("Changed field data types: " + changedFieldTypes + "\n");
@@ -155,17 +156,15 @@ public class Main {
 //        System.out.println("Added foreign keys: " + addedForeignKeys + "\n");
 //        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
 
-        List<String> queries = new ArrayList<>();
-
         // Convert differences to queries (ordered)
-        convertListToQuery(queryTypes.ADD_TABLE, addedEntities, queries);
+        convertListToQuery(queryTypes.ADD_TABLE, addedEntities, queries, primaryKeys);
         convertMapToQuery(queryTypes.ADD_FIELD, addedFields, queries);
-        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly, queries);
-        convertMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys, queries);
         convertMapToQuery(queryTypes.REMOVE_FOREIGN_KEY, removedForeignKeys, queries);
         convertMapToQuery(queryTypes.REMOVE_READONLY, removedReadOnly, queries);
+        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly, queries);
+        convertMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys, queries);
         convertMapToQuery(queryTypes.REMOVE_FIELD, removedFields, queries);
-        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities, queries);
+        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities, queries, primaryKeys);
         convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes, queries);
 
         try {
@@ -185,61 +184,61 @@ public class Main {
         return differences;
     }
 
-    // Update list of updated entities
-    public static void updateEntity(List<String> updatedEntities, Entity entity) {
-        if(!updatedEntities.contains(entity.getEntityName())) {
-            updatedEntities.add(entity.getEntityName());
-        }
-    }
-
     // Add entity and field to map
-    public static void addToMap(Entity entity, EntityField field, Map<String,List<Object>> map, boolean withType, foreignKeyAction action) {
-        StringBuilder keyName = new StringBuilder();
-        keyName.append("FK_");
-        keyName.append(entity.getEntityName());
-        keyName.append("_");
-
+    public static void addToMap(Entity entity, EntityField field, Map<String,List<Object>> map, boolean withType, boolean foreignKey, foreignKeyAction action) {
         switch(action) {
             case ADD:
-                keyName.append(field.getRelation().getAssocEntity().getEntityName());
+                String AddKeyName = String.format("FK_%s_%s", entity.getEntityName(), field.getRelation().getAssocEntity().getEntityName());
 
                 if (!map.containsKey(entity.getEntityName())) {
                     List<Object> initialData = new ArrayList<>();
-                    initialData.add(Arrays.toString(new Object[]{keyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
+                    initialData.add(Arrays.toString(new Object[]{AddKeyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
                                     field.getRelation().getKeyColumns().get(0).getReference()}));
                     map.put(entity.getEntityName(), initialData);
                 } else {
                     List<Object> existingData = map.get(entity.getEntityName());
-                    existingData.add(Arrays.toString(new Object[]{keyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
+                    existingData.add(Arrays.toString(new Object[]{AddKeyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
                             field.getRelation().getKeyColumns().get(0).getReference()}));
                     map.put(entity.getEntityName(), existingData);
                 }
                 break;
 
             case REMOVE:
-                keyName.append(field.getRelation().getAssocEntity().getEntityName());
+                String RemoveKeyName = String.format("FK_%s_%s", entity.getEntityName(), field.getRelation().getAssocEntity().getEntityName());
 
                 if (!map.containsKey(entity.getEntityName())) {
                     List<Object> initialData = new ArrayList<>();
-                    initialData.add(Arrays.toString(new Object[]{keyName}));
+                    initialData.add(Arrays.toString(new Object[]{RemoveKeyName}));
                     map.put(entity.getEntityName(), initialData);
                 } else {
                     List<Object> existingData = map.get(entity.getEntityName());
-                    existingData.add(Arrays.toString(new Object[]{keyName}));
+                    existingData.add(Arrays.toString(new Object[]{RemoveKeyName}));
                     map.put(entity.getEntityName(), existingData);
                 }
                 break;
 
             case NONE:
                 if (withType) {
-                    if (!map.containsKey(entity.getEntityName())) {
-                        List<Object> initialData = new ArrayList<>();
-                        initialData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
-                        map.put(entity.getEntityName(), initialData);
+                    if (foreignKey) {
+                        if (!map.containsKey(entity.getEntityName())) {
+                            List<Object> initialData = new ArrayList<>();
+                            initialData.add(Arrays.toString(new Object[]{field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getKeyColumns().get(0).getType()}));
+                            map.put(entity.getEntityName(), initialData);
+                        } else {
+                            List<Object> existingData = map.get(entity.getEntityName());
+                            existingData.add(Arrays.toString(new Object[]{field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getKeyColumns().get(0).getType()}));
+                            map.put(entity.getEntityName(), existingData);
+                        }
                     } else {
-                        List<Object> existingData = map.get(entity.getEntityName());
-                        existingData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
-                        map.put(entity.getEntityName(), existingData);
+                        if (!map.containsKey(entity.getEntityName())) {
+                            List<Object> initialData = new ArrayList<>();
+                            initialData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+                            map.put(entity.getEntityName(), initialData);
+                        } else {
+                            List<Object> existingData = map.get(entity.getEntityName());
+                            existingData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+                            map.put(entity.getEntityName(), existingData);
+                        }
                     }
                 } else {
                     if (!map.containsKey(entity.getEntityName())) {
@@ -257,11 +256,12 @@ public class Main {
     }
 
     // Convert list to a MySQL query
-    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries) {
+    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries, HashMap<String, List<Object>> primaryKeys) {
         switch(type) {
             case ADD_TABLE:
                 for (String entity : entities) {
-                    queries.add("CREATE TABLE " + entity + ";");
+                    String[] primaryKeyData = primaryKeys.get(entity).toString().split(",");
+                    queries.add("CREATE TABLE " + entity + " (" + primaryKeyData[0].substring(2) + " " + getDataType(primaryKeyData[1].substring(1, primaryKeyData[1].length()-2)) + " PRIMARY KEY);");
                 }
                 break;
 
@@ -320,7 +320,7 @@ public class Main {
                 for (String entity : map.keySet()) {
                     for (Object field : map.get(entity)) {
                         String[] fieldData = field.toString().split(",");
-                        queries.add("ALTER TABLE " + entity + " ADD CONSTRAINT " + fieldData[0].substring(1) + " FOREIGN KEY (" + fieldData[1].substring(1) + ") REFERENCES " + fieldData[2] + "(" + fieldData[3].substring(1, fieldData[3].length()-1) + ");");
+                        queries.add("ALTER TABLE " + entity + " ADD CONSTRAINT " + fieldData[0].substring(1) + " FOREIGN KEY (" + fieldData[1].substring(1) + ") REFERENCES" + fieldData[2] + "(" + fieldData[3].substring(1, fieldData[3].length()-1) + ");");
                     }
                 }
                 break;
@@ -362,7 +362,7 @@ public class Main {
                 break;
 
             case "boolean":
-                resultType = "BOOLEAN";
+                resultType = "TINYINT(1)";
                 break;
 
             case "Date":
