@@ -36,16 +36,16 @@ public class Main {
     public static List<String> findDifferences(Module currentModel, Module newModel) {
         List<String> differences = new ArrayList<>();
         List<String> queries = new ArrayList<>();
-        HashMap<String,List<Object>> primaryKeys = new HashMap<>();
+        HashMap<String,List<FieldMetadata>> primaryKeys = new HashMap<>();
 
         List<String> addedEntities = new ArrayList<>();
         List<String> removedEntities = new ArrayList<>();
-        HashMap<String,List<Object>> addedFields = new HashMap<>();
+        HashMap<String,List<FieldMetadata>> addedFields = new HashMap<>();
         HashMap<String,List<String>> removedFields = new HashMap<>();
-        HashMap<String,List<Object>> changedFieldTypes = new HashMap<>();
-        HashMap<String,List<Object>> addedReadOnly = new HashMap<>();
+        HashMap<String,List<FieldMetadata>> changedFieldTypes = new HashMap<>();
+        HashMap<String,List<FieldMetadata>> addedReadOnly = new HashMap<>();
         HashMap<String,List<String>> removedReadOnly = new HashMap<>();
-        HashMap<String,List<Object>> addedForeignKeys = new HashMap<>();
+        HashMap<String,List<ForeignKey>> addedForeignKeys = new HashMap<>();
         HashMap<String,List<String>> removedForeignKeys = new HashMap<>();
 
         // Compare entities in currentModel and newModel
@@ -146,15 +146,46 @@ public class Main {
             addedReadOnly.remove(entity);
         }
 
+        //Printing for testing
         System.out.println("Added entities: " + addedEntities + "\n");
         System.out.println("Removed entities: " + removedEntities + "\n");
-        System.out.println("Added fields: " + addedFields + "\n");
+        List<String> addedFieldsList = new ArrayList<>();
+        for (String key : addedFields.keySet()) {
+            for (FieldMetadata field : addedFields.get(key)) {
+                addedFieldsList.add(key + "=[" + field.getName() + ", " + field.getDataType() + "]");
+            }
+        }
+        System.out.println("Added fields: " + addedFieldsList + "\n");
         System.out.println("Removed fields: " + removedFields + "\n");
-        System.out.println("Changed field data types: " + changedFieldTypes + "\n");
-        System.out.println("Added readonly fields: " + addedReadOnly + "\n");
+        List<String> changedFieldTypesList = new ArrayList<>();
+        for (Map.Entry<String, List<FieldMetadata>> entry : changedFieldTypes.entrySet()) {
+            String entityName = entry.getKey();
+            for (FieldMetadata field : entry.getValue()) {
+                changedFieldTypesList.add(entityName + "=[" + field.getName() + ", " + field.getDataType() + "]");
+            }
+        }
+        System.out.println("Changed field data types: " + changedFieldTypesList + "\n");
+        List<String> addedReadOnlyList = new ArrayList<>();
+        for (Map.Entry<String, List<FieldMetadata>> entry : addedReadOnly.entrySet()) {
+            String entityName = entry.getKey();
+            List<FieldMetadata> fieldList = entry.getValue();
+            for (FieldMetadata field : fieldList) {
+                addedReadOnlyList.add(entityName + "=[" + field.getName() + "]");
+            }
+        }
+        System.out.println("Added readonly fields: " + addedReadOnlyList + "\n");
         System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
-        System.out.println("Added foreign keys: " + addedForeignKeys + "\n");
+        List<String> addedFK = new ArrayList<>();
+        for (Map.Entry<String, List<ForeignKey>> entry : addedForeignKeys.entrySet()) {
+            String key = entry.getKey();
+            List<ForeignKey> value = entry.getValue();
+            for (ForeignKey fk : value) {
+                addedFK.add(key + "=[" + fk.getName() + ", " + fk.getColumnName() + ", " + fk.getReferenceTable() + ", " + fk.getReferenceColumn() + "]");
+            }
+        }
+        System.out.println("Added foreign keys: " + addedFK + "\n");
         System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
+
 
         // Convert differences to queries (ordered)
         convertListToQuery(queryTypes.ADD_TABLE, addedEntities, queries, primaryKeys);
@@ -162,7 +193,7 @@ public class Main {
         convertMapListToQuery(queryTypes.REMOVE_FOREIGN_KEY, removedForeignKeys, queries);
         convertMapListToQuery(queryTypes.REMOVE_READONLY, removedReadOnly, queries);
         convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly, queries);
-        convertMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys, queries);
+        convertFKMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys, queries);
         convertMapListToQuery(queryTypes.REMOVE_FIELD, removedFields, queries);
         convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities, queries, primaryKeys);
         convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes, queries);
@@ -184,18 +215,18 @@ public class Main {
         return differences;
     }
 
-    public static void addToMapAddForeignKey (Entity entity, EntityField field, Map<String,List<Object>> map) {
+    public static void addToMapAddForeignKey (Entity entity, EntityField field, Map<String,List<ForeignKey>> map) {
         String AddKeyName = String.format("FK_%s_%s", entity.getEntityName(), field.getRelation().getAssocEntity().getEntityName());
+        ForeignKey foreignKey = new ForeignKey(AddKeyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
+                field.getRelation().getKeyColumns().get(0).getReference());
 
         if (!map.containsKey(entity.getEntityName())) {
-            List<Object> initialData = new ArrayList<>();
-            initialData.add(Arrays.toString(new Object[]{AddKeyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
-                    field.getRelation().getKeyColumns().get(0).getReference()}));
+            List<ForeignKey> initialData = new ArrayList<>();
+            initialData.add(foreignKey);
             map.put(entity.getEntityName(), initialData);
         } else {
-            List<Object> existingData = map.get(entity.getEntityName());
-            existingData.add(Arrays.toString(new Object[]{AddKeyName, field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getAssocEntity().getEntityName(),
-                    field.getRelation().getKeyColumns().get(0).getReference()}));
+            List<ForeignKey> existingData = map.get(entity.getEntityName());
+            existingData.add(foreignKey);
             map.put(entity.getEntityName(), existingData);
         }
     }
@@ -226,55 +257,66 @@ public class Main {
         }
     }
 
-    public static void addToMapNoTypeObject (Entity entity, EntityField field, Map<String,List<Object>> map) {
+    public static void addToMapNoTypeObject (Entity entity, EntityField field, Map<String,List<FieldMetadata>> map) {
+        FieldMetadata fieldMetadata = new FieldMetadata(field.getFieldName());
+
         if (!map.containsKey(entity.getEntityName())) {
-            List<Object> initialData = new ArrayList<>();
-            initialData.add(Arrays.toString(new Object[]{field.getFieldName()}));
+            List<FieldMetadata> initialData = new ArrayList<>();
+            initialData.add(fieldMetadata);
             map.put(entity.getEntityName(), initialData);
         } else {
-            List<Object> existingData = map.get(entity.getEntityName());
-            existingData.add(Arrays.toString(new Object[]{field.getFieldName()}));
+            List<FieldMetadata> existingData = map.get(entity.getEntityName());
+            existingData.add(fieldMetadata);
             map.put(entity.getEntityName(), existingData);
         }
     }
 
-    public static void addToMapWithType (Entity entity, EntityField field, Map<String,List<Object>> map) {
+    public static void addToMapWithType (Entity entity, EntityField field, Map<String,List<FieldMetadata>> map) {
+        FieldMetadata fieldMetadata = new FieldMetadata(field.getFieldName(), field.getFieldType());
+
         if (!map.containsKey(entity.getEntityName())) {
-            List<Object> initialData = new ArrayList<>();
-            initialData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+            List<FieldMetadata> initialData = new ArrayList<>();
+            initialData.add(fieldMetadata);
             map.put(entity.getEntityName(), initialData);
         } else {
-            List<Object> existingData = map.get(entity.getEntityName());
-            existingData.add(Arrays.toString(new Object[]{field.getFieldName(), field.getFieldType()}));
+            List<FieldMetadata> existingData = map.get(entity.getEntityName());
+            existingData.add(fieldMetadata);
             map.put(entity.getEntityName(), existingData);
         }
     }
 
-    public static void addToMapNewEntityFK (Entity entity, EntityField field, Map<String,List<Object>> map) {
+    public static void addToMapNewEntityFK (Entity entity, EntityField field, Map<String,List<FieldMetadata>> map) {
+        FieldMetadata fieldMetadata = new FieldMetadata(field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getKeyColumns().get(0).getType());
+
         if (!map.containsKey(entity.getEntityName())) {
-            List<Object> initialData = new ArrayList<>();
-            initialData.add(Arrays.toString(new Object[]{field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getKeyColumns().get(0).getType()}));
+            List<FieldMetadata> initialData = new ArrayList<>();
+            initialData.add(fieldMetadata);
             map.put(entity.getEntityName(), initialData);
         } else {
-            List<Object> existingData = map.get(entity.getEntityName());
-            existingData.add(Arrays.toString(new Object[]{field.getRelation().getKeyColumns().get(0).getField(), field.getRelation().getKeyColumns().get(0).getType()}));
+            List<FieldMetadata> existingData = map.get(entity.getEntityName());
+            existingData.add(fieldMetadata);
             map.put(entity.getEntityName(), existingData);
         }
     }
 
     // Convert list to a MySQL query
-    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries, HashMap<String, List<Object>> primaryKeys) {
+    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries, HashMap<String, List<FieldMetadata>> primaryKeys) {
         switch(type) {
             case ADD_TABLE:
                 for (String entity : entities) {
-                    String[] primaryKeyData = primaryKeys.get(entity).toString().split(",");
-                    queries.add("CREATE TABLE " + entity + " (" + primaryKeyData[0].substring(2) + " " + getDataType(primaryKeyData[1].substring(1, primaryKeyData[1].length()-2)) + " PRIMARY KEY);");
+                    FieldMetadata primaryKey = primaryKeys.get(entity).get(0);
+                    String primaryKeyName = primaryKey.getName();
+                    String primaryKeyType = primaryKey.getDataType();
+                    String addTableTemplate = "CREATE TABLE %s (%s %s PRIMARY KEY);";
+
+                    queries.add(String.format(addTableTemplate, entity, primaryKeyName, getDataType(primaryKeyType)));
                 }
                 break;
 
             case REMOVE_TABLE:
                 for (String entity : entities) {
-                    queries.add("DROP TABLE " + entity + ";");
+                    String removeTableTemplate = "DROP TABLE %s;";
+                    queries.add(String.format(removeTableTemplate, entity));
                 }
                 break;
         }
@@ -316,16 +358,14 @@ public class Main {
         }
     }
 
-    // Convert map of Object lists to a MySQL query
-    public static void convertMapToQuery(queryTypes type, Map<String,List<Object>> map, List<String> queries) {
+    // Convert map of FieldMetadata lists to a MySQL query
+    public static void convertMapToQuery(queryTypes type, Map<String,List<FieldMetadata>> map, List<String> queries) {
         switch(type) {
             case ADD_FIELD:
                 for (String entity : map.keySet()) {
-                    for (Object field : map.get(entity)) {
-                        String[] fieldData = field.toString().split(",");
-
-                        String fieldName = fieldData[0].substring(1);
-                        String fieldType = getDataType(fieldData[1].substring(1,fieldData[1].length()-1));
+                    for (FieldMetadata field : map.get(entity)) {
+                        String fieldName = field.getName();
+                        String fieldType = getDataType(field.getDataType());
                         String addFieldTemplate = "ALTER TABLE %s ADD COLUMN %s %s;";
 
                         queries.add(String.format(addFieldTemplate, entity, fieldName, fieldType));
@@ -335,11 +375,9 @@ public class Main {
 
             case CHANGE_TYPE:
                 for (String entity : map.keySet()) {
-                    for (Object field : map.get(entity)) {
-                        String[] fieldData = field.toString().split(",");
-
-                        String fieldName = fieldData[0].substring(1);
-                        String fieldType = getDataType(fieldData[1].substring(1,fieldData[1].length()-1));
+                    for (FieldMetadata field : map.get(entity)) {
+                        String fieldName = field.getName();
+                        String fieldType = getDataType(field.getDataType());
                         String changeTypeTemplate = "ALTER TABLE %s MODIFY COLUMN %s %s;";
 
                         queries.add(String.format(changeTypeTemplate, entity, fieldName, fieldType));
@@ -349,30 +387,32 @@ public class Main {
 
             case ADD_READONLY:
                 for (String entity : map.keySet()) {
-                    for (Object field : map.get(entity)) {
-                        String primaryKey = field.toString().substring(1,field.toString().length()-1);
+                    for (FieldMetadata field : map.get(entity)) {
+                        String primaryKey = field.getName();
                         String addReadOnlyTemplate = "ALTER TABLE %s ADD PRIMARY KEY (%s);";
 
                         queries.add(String.format(addReadOnlyTemplate, entity, primaryKey));
                     }
                 }
                 break;
+        }
+    }
 
-            case ADD_FOREIGN_KEY:
-                for (String entity : map.keySet()) {
-                    for (Object field : map.get(entity)) {
-                        String[] fieldData = field.toString().split(",");
+    // Convert map of ForeignKey lists to a MySQL query
+    public static void convertFKMapToQuery(queryTypes type, Map<String,List<ForeignKey>> map, List<String> queries) {
+        if (Objects.requireNonNull(type) == queryTypes.ADD_FOREIGN_KEY) {
+            for (String entity : map.keySet()) {
+                for (ForeignKey foreignKey : map.get(entity)) {
 
-                        String foreign_key_name = fieldData[0].substring(1);
-                        String child_column_name = fieldData[1].substring(1);
-                        String parent_table_name = fieldData[2].substring(1);
-                        String parent_column_name = fieldData[3].substring(1, fieldData[3].length()-1);
-                        String addForeignKeyTemplate = "ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s);";
+                    String foreign_key_name = foreignKey.getName();
+                    String child_column_name = foreignKey.getColumnName();
+                    String reference_table_name = foreignKey.getReferenceTable();
+                    String reference_column_name = foreignKey.getReferenceColumn();
+                    String addForeignKeyTemplate = "ALTER TABLE %s ADD CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s(%s);";
 
-                        queries.add(String.format(addForeignKeyTemplate, entity, foreign_key_name, child_column_name, parent_table_name, parent_column_name));
-                    }
+                    queries.add(String.format(addForeignKeyTemplate, entity, foreign_key_name, child_column_name, reference_table_name, reference_column_name));
                 }
-                break;
+            }
         }
     }
 
