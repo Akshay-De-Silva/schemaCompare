@@ -44,8 +44,10 @@ public type MedicalObject record {|
     string objectName;
     string types;
     boolean objectFlag;
+    MedicalTest[] test;
 |};
 
 public type MedicalTest record {|
     readonly string testId;
+    MedicalObject object;
 |};

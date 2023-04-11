@@ -135,6 +135,12 @@ public class Main {
                             differences.add("Field " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + newModelEntity.getEntityName());
                             addToMapWithType(newModelEntity, field, addedFields);
                         }
+                    } else if(field.getRelation().isOwner()){
+                        differences.add("Field " + field.getRelation().getKeyColumns().get(0).getField() + " of type " + field.getRelation().getKeyColumns().get(0).getType() + " has been added to entity " + newModelEntity.getEntityName() + " as a foreign key");
+                        addToMapNewEntityFK(newModelEntity, field, addedFields);
+
+                        differences.add("Foreign key " + field.getFieldName() + " of type " + field.getFieldType() + " has been added to entity " + newModelEntity.getEntityName());
+                        addToMapAddForeignKey(newModelEntity, field, addedForeignKeys);
                     }
                 }
             }
