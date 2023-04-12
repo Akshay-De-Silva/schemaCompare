@@ -36,7 +36,6 @@ public class Main {
     public static List<String> findDifferences(Module currentModel, Module newModel) {
         List<String> differences = new ArrayList<>();
         List<String> queries = new ArrayList<>();
-        HashMap<String,List<FieldMetadata>> primaryKeys = new HashMap<>();
 
         List<String> addedEntities = new ArrayList<>();
         List<String> removedEntities = new ArrayList<>();
@@ -146,12 +145,6 @@ public class Main {
             }
         }
 
-        //Save new table primary keys and remove them from addedReadOnly
-        for (String entity : addedEntities) {
-            primaryKeys.put(entity, addedReadOnly.get(entity));
-            addedReadOnly.remove(entity);
-        }
-
         //Printing for testing
         System.out.println("Added entities: " + addedEntities + "\n");
         System.out.println("Removed entities: " + removedEntities + "\n");
@@ -194,15 +187,15 @@ public class Main {
 
 
         // Convert differences to queries (ordered)
-        convertListToQuery(queryTypes.ADD_TABLE, addedEntities, queries, primaryKeys);
-        convertMapToQuery(queryTypes.ADD_FIELD, addedFields, queries);
+        convertCreateTableToQuery(queryTypes.ADD_TABLE, addedEntities, queries, addedReadOnly, addedFields);
+        convertMapToQuery(queryTypes.ADD_FIELD, addedFields, queries, addedEntities);
         convertMapListToQuery(queryTypes.REMOVE_FOREIGN_KEY, removedForeignKeys, queries);
         convertMapListToQuery(queryTypes.REMOVE_READONLY, removedReadOnly, queries);
-        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly, queries);
+        convertMapToQuery(queryTypes.ADD_READONLY, addedReadOnly, queries, addedEntities);
         convertFKMapToQuery(queryTypes.ADD_FOREIGN_KEY, addedForeignKeys, queries);
         convertMapListToQuery(queryTypes.REMOVE_FIELD, removedFields, queries);
-        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities, queries, primaryKeys);
-        convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes, queries);
+        convertListToQuery(queryTypes.REMOVE_TABLE, removedEntities, queries);
+        convertMapToQuery(queryTypes.CHANGE_TYPE, changedFieldTypes, queries, addedEntities);
 
         try {
             BufferedWriter writer = new BufferedWriter(new FileWriter("migrate.sql"));
@@ -305,26 +298,37 @@ public class Main {
         }
     }
 
-    // Convert list to a MySQL query
-    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries, HashMap<String, List<FieldMetadata>> primaryKeys) {
-        switch(type) {
-            case ADD_TABLE:
-                for (String entity : entities) {
-                    FieldMetadata primaryKey = primaryKeys.get(entity).get(0);
-                    String primaryKeyName = primaryKey.getName();
-                    String primaryKeyType = primaryKey.getDataType();
-                    String addTableTemplate = "CREATE TABLE %s (%s %s PRIMARY KEY);";
+    // Convert Create Table List to Query
+    public static void convertCreateTableToQuery(queryTypes type, List<String> addedEntities, List<String> queries, HashMap<String, List<FieldMetadata>> addedReadOnly, HashMap<String,List<FieldMetadata>> addedFields) {
+        if(Objects.requireNonNull(type) == queryTypes.ADD_TABLE) {
+            for (String entity : addedEntities) {
+                FieldMetadata primaryKey = addedReadOnly.get(entity).get(0);
+                String primaryKeyName = primaryKey.getName();
+                String primaryKeyType = primaryKey.getDataType();
+                String addTableTemplate = "CREATE TABLE %s (%s %s PRIMARY KEY";
 
-                    queries.add(String.format(addTableTemplate, entity, primaryKeyName, getDataType(primaryKeyType)));
-                }
-                break;
+                StringBuilder query = new StringBuilder(String.format(addTableTemplate, entity, primaryKeyName, getDataType(primaryKeyType)));
 
-            case REMOVE_TABLE:
-                for (String entity : entities) {
-                    String removeTableTemplate = "DROP TABLE %s;";
-                    queries.add(String.format(removeTableTemplate, entity));
+                String addFieldTemplate = ", %s %s";
+
+                if(addedFields.get(entity) != null) {
+                    for (FieldMetadata field : addedFields.get(entity)) {
+                        query.append(String.format(addFieldTemplate, field.getName(), getDataType(field.getDataType())));
+                    }
                 }
-                break;
+
+                queries.add(query + ");");
+            }
+        }
+    }
+
+    //Convert list to a MySQL query
+    public static void convertListToQuery(queryTypes type, List<String> entities, List<String> queries) {
+        if (Objects.requireNonNull(type) == queryTypes.REMOVE_TABLE) {
+            for (String entity : entities) {
+                String removeTableTemplate = "DROP TABLE %s;";
+                queries.add(String.format(removeTableTemplate, entity));
+            }
         }
     }
 
@@ -365,16 +369,18 @@ public class Main {
     }
 
     // Convert map of FieldMetadata lists to a MySQL query
-    public static void convertMapToQuery(queryTypes type, Map<String,List<FieldMetadata>> map, List<String> queries) {
+    public static void convertMapToQuery(queryTypes type, Map<String,List<FieldMetadata>> map, List<String> queries, List<String> addedEntities) {
         switch(type) {
             case ADD_FIELD:
                 for (String entity : map.keySet()) {
-                    for (FieldMetadata field : map.get(entity)) {
-                        String fieldName = field.getName();
-                        String fieldType = getDataType(field.getDataType());
-                        String addFieldTemplate = "ALTER TABLE %s ADD COLUMN %s %s;";
+                    if(!addedEntities.contains(entity)) {
+                        for (FieldMetadata field : map.get(entity)) {
+                            String fieldName = field.getName();
+                            String fieldType = getDataType(field.getDataType());
+                            String addFieldTemplate = "ALTER TABLE %s ADD COLUMN %s %s;";
 
-                        queries.add(String.format(addFieldTemplate, entity, fieldName, fieldType));
+                            queries.add(String.format(addFieldTemplate, entity, fieldName, fieldType));
+                        }
                     }
                 }
                 break;
@@ -393,11 +399,13 @@ public class Main {
 
             case ADD_READONLY:
                 for (String entity : map.keySet()) {
-                    for (FieldMetadata field : map.get(entity)) {
-                        String primaryKey = field.getName();
-                        String addReadOnlyTemplate = "ALTER TABLE %s ADD PRIMARY KEY (%s);";
+                    if(!addedEntities.contains(entity)) {
+                        for (FieldMetadata field : map.get(entity)) {
+                            String primaryKey = field.getName();
+                            String addReadOnlyTemplate = "ALTER TABLE %s ADD PRIMARY KEY (%s);";
 
-                        queries.add(String.format(addReadOnlyTemplate, entity, primaryKey));
+                            queries.add(String.format(addReadOnlyTemplate, entity, primaryKey));
+                        }
                     }
                 }
                 break;
