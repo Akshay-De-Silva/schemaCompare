@@ -15,6 +15,21 @@ configurations {
     externalJars
 }
 
+task fatJar(type: Jar) {
+    manifest {
+        attributes(
+                'Main-Class': 'schemacompare.Main'
+        )
+    }
+    archiveBaseName = "${rootProject.name}"
+    tasks.withType(Jar){
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+    from { configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    //from { configurations.compileClasspath.collect { it.isDirectory() ? it : zipTree(it) } setDuplicatesStrategy(DuplicatesStrategy.INCLUDE) }
+    with jar
+}
+
 allprojects {
     group = project.group
     version = project.version

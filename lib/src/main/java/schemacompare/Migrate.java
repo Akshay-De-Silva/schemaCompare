@@ -17,7 +17,9 @@ import schemacompare.models.EntityField;
 import schemacompare.models.Module;
 
 public class Migrate {
-    public static void migrate(String projectDirName, String migrationName) {
+    public static void migrate(String migrationName) {
+        String projectDirName = System.getProperty("user.dir");
+
         String balFile = getBalFilePath(projectDirName);
 
         if (balFile != null) {
@@ -124,8 +126,8 @@ public class Migrate {
             Module newModel = schemaCompare.getEntities(newModelPath);
 
             List<String> differences = findDifferences(currentModel, newModel, newMigrationPath);
-//          System.out.println("Detailed list of differences: ");
-//          System.out.println(differences);
+            System.out.println("Detailed list of differences: ");
+            System.out.println(differences);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -282,45 +284,45 @@ public class Migrate {
             }
         }
 
-        //Printing for testing
-//        System.out.println("Added entities: " + addedEntities + "\n");
-//        System.out.println("Removed entities: " + removedEntities + "\n");
-//        List<String> addedFieldsList = new ArrayList<>();
-//        for (String key : addedFields.keySet()) {
-//            for (FieldMetadata field : addedFields.get(key)) {
-//                addedFieldsList.add(key + "=[" + field.getName() + ", " + field.getDataType() + "]");
-//            }
-//        }
-//        System.out.println("Added fields: " + addedFieldsList + "\n");
-//        System.out.println("Removed fields: " + removedFields + "\n");
-//        List<String> changedFieldTypesList = new ArrayList<>();
-//        for (Map.Entry<String, List<FieldMetadata>> entry : changedFieldTypes.entrySet()) {
-//            String entityName = entry.getKey();
-//            for (FieldMetadata field : entry.getValue()) {
-//                changedFieldTypesList.add(entityName + "=[" + field.getName() + ", " + field.getDataType() + "]");
-//            }
-//        }
-//        System.out.println("Changed field data types: " + changedFieldTypesList + "\n");
-//        List<String> addedReadOnlyList = new ArrayList<>();
-//        for (Map.Entry<String, List<FieldMetadata>> entry : addedReadOnly.entrySet()) {
-//            String entityName = entry.getKey();
-//            List<FieldMetadata> fieldList = entry.getValue();
-//            for (FieldMetadata field : fieldList) {
-//                addedReadOnlyList.add(entityName + "=[" + field.getName() + "]");
-//            }
-//        }
-//        System.out.println("Added readonly fields: " + addedReadOnlyList + "\n");
-//        System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
-//        List<String> addedFK = new ArrayList<>();
-//        for (Map.Entry<String, List<ForeignKey>> entry : addedForeignKeys.entrySet()) {
-//            String key = entry.getKey();
-//            List<ForeignKey> value = entry.getValue();
-//            for (ForeignKey fk : value) {
-//                addedFK.add(key + "=[" + fk.getName() + ", " + fk.getColumnName() + ", " + fk.getReferenceTable() + ", " + fk.getReferenceColumn() + "]");
-//            }
-//        }
-//        System.out.println("Added foreign keys: " + addedFK + "\n");
-//        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
+        //Printing for testing purposes
+        System.out.println("Added entities: " + addedEntities + "\n");
+        System.out.println("Removed entities: " + removedEntities + "\n");
+        List<String> addedFieldsList = new ArrayList<>();
+        for (String key : addedFields.keySet()) {
+            for (FieldMetadata field : addedFields.get(key)) {
+                addedFieldsList.add(key + "=[" + field.getName() + ", " + field.getDataType() + "]");
+            }
+        }
+        System.out.println("Added fields: " + addedFieldsList + "\n");
+        System.out.println("Removed fields: " + removedFields + "\n");
+        List<String> changedFieldTypesList = new ArrayList<>();
+        for (Map.Entry<String, List<FieldMetadata>> entry : changedFieldTypes.entrySet()) {
+            String entityName = entry.getKey();
+            for (FieldMetadata field : entry.getValue()) {
+                changedFieldTypesList.add(entityName + "=[" + field.getName() + ", " + field.getDataType() + "]");
+            }
+        }
+        System.out.println("Changed field data types: " + changedFieldTypesList + "\n");
+        List<String> addedReadOnlyList = new ArrayList<>();
+        for (Map.Entry<String, List<FieldMetadata>> entry : addedReadOnly.entrySet()) {
+            String entityName = entry.getKey();
+            List<FieldMetadata> fieldList = entry.getValue();
+            for (FieldMetadata field : fieldList) {
+                addedReadOnlyList.add(entityName + "=[" + field.getName() + "]");
+            }
+        }
+        System.out.println("Added readonly fields: " + addedReadOnlyList + "\n");
+        System.out.println("Removed readonly fields: " + removedReadOnly + "\n");
+        List<String> addedFK = new ArrayList<>();
+        for (Map.Entry<String, List<ForeignKey>> entry : addedForeignKeys.entrySet()) {
+            String key = entry.getKey();
+            List<ForeignKey> value = entry.getValue();
+            for (ForeignKey fk : value) {
+                addedFK.add(key + "=[" + fk.getName() + ", " + fk.getColumnName() + ", " + fk.getReferenceTable() + ", " + fk.getReferenceColumn() + "]");
+            }
+        }
+        System.out.println("Added foreign keys: " + addedFK + "\n");
+        System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
 
 
         // Convert differences to queries (ordered)

@@ -4,6 +4,10 @@ import static schemacompare.Migrate.migrate;
 
 public class Main {
     public static void main(String[] args) {
-        migrate("/home/wso2/IdeaProjects/schemaCompare/lib/src/myModels", "secondMigration");
+        if(args.length == 1) {
+            migrate(args[0]);
+        } else {
+            System.out.println("Please provide the name of the migration");
+        }
     }
 }
