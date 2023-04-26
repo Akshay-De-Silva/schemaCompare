@@ -102,35 +102,58 @@ public class Migrate {
         LocalDateTime currentTime = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss");
         String timestamp = currentTime.format(formatter);
+        List<String> differences = new ArrayList<>();
 
         // Create the directory with the current timestamp
         String newMigration = migrationsDir + "/" + timestamp + "_" + migrationName;
-        File directory = new File(newMigration);
-        if (!directory.exists()) {
-            boolean isDirectoryCreated = directory.mkdirs();
+        File newMigrateDirectory = new File(newMigration);
+        if (!newMigrateDirectory.exists()) {
+            boolean isDirectoryCreated = newMigrateDirectory.mkdirs();
             if (!isDirectoryCreated) {
-                System.out.println("Failed to create directory: " + directory.getAbsolutePath());
+                System.out.println("Failed to create directory: " + newMigrateDirectory.getAbsolutePath());
             }
         }
 
         Path newMigrationPath  = Paths.get(newMigration);
         try {
-            // Copy the source file to the destination folder
-            Files.copy(newModelPath, newMigrationPath.resolve(newModelPath.getFileName()));
-        } catch (IOException e) {
-            System.out.println("Error copying file: " + e.getMessage());
-        }
-
-        try {
             Module currentModel = schemaCompare.getEntities(currentModelPath);
             Module newModel = schemaCompare.getEntities(newModelPath);
 
-            List<String> differences = findDifferences(currentModel, newModel, newMigrationPath);
-            System.out.println("Detailed list of differences: ");
+            differences = findDifferences(currentModel, newModel, newMigrationPath);
+            System.out.println("\nDetailed list of differences: ");
             System.out.println(differences);
+            System.out.println("\n");
 
         } catch (Exception e) {
             e.printStackTrace();
+        }
+
+        if(!differences.isEmpty()) {
+            try {
+                // Copy the source file to the destination folder
+                Files.copy(newModelPath, newMigrationPath.resolve(newModelPath.getFileName()));
+            } catch (IOException e) {
+                System.out.println("Error copying file: " + e.getMessage());
+            }
+        } else {
+            // Delete the newMigrateDirectory
+            boolean deleteNewMigrateFolder = newMigrateDirectory.delete();
+            if (deleteNewMigrateFolder) {
+                System.out.println("Database is up to date. No changes detected.");
+            } else {
+                System.out.println("Failed to delete timestamp folder.");
+            }
+
+            // Delete the migrations directory if it is empty
+            if(migrationsDir.exists() && migrationsDir.isDirectory()) {
+                if(Objects.requireNonNull(migrationsDir.listFiles()).length == 0) {
+                    try {
+                        Files.delete(migrationsDir.toPath());
+                    } catch (IOException e) {
+                        System.out.println("Failed to delete migration folder: " + e.getMessage());
+                    }
+                }
+            }
         }
     }
 
@@ -285,6 +308,7 @@ public class Migrate {
         }
 
         //Printing for testing purposes
+        System.out.println("\n");
         System.out.println("Added entities: " + addedEntities + "\n");
         System.out.println("Removed entities: " + removedEntities + "\n");
         List<String> addedFieldsList = new ArrayList<>();
@@ -323,6 +347,7 @@ public class Migrate {
         }
         System.out.println("Added foreign keys: " + addedFK + "\n");
         System.out.println("Removed foreign keys: " + removedForeignKeys + "\n");
+        System.out.println("\n");
 
 
         // Convert differences to queries (ordered)
